@@ -564,36 +564,7 @@ SlotcarCommon::UpdateResult SlotcarCommon::update_diff_drive(
 
     const bool hold = now < hold_time;
 
-    const bool rotate_towards_next_target = close_enough && (hold || pause);
-
-    if (rotate_towards_next_target)
-    {
-      if (_traj_wp_idx+1 < trajectory.size())
-      {
-        const auto dpos_next =
-          compute_dpos(trajectory.at(_traj_wp_idx+1).pose, _pose);
-
-        const auto goal_heading =
-          compute_heading(trajectory.at(_traj_wp_idx+1).pose);
-
-        double dir = 1.0;
-        result.w = compute_change_in_rotation(
-          current_heading, dpos_next, &goal_heading, &dir);
-
-        if (dir < 0.0)
-          current_heading *= -1.0;
-      }
-      else
-      {
-        const auto goal_heading =
-          compute_heading(trajectory.at(_traj_wp_idx).pose);
-        result.w = compute_change_in_rotation(
-          current_heading, goal_heading);
-      }
-      result.target_linear_speed_now = 0.0;
-      _current_mode.mode = rmf_fleet_msgs::msg::RobotMode::MODE_PAUSED;
-    }
-    else if (close_enough)
+    if (close_enough)
     {
       _traj_wp_idx++;
       if (_remaining_path.empty())
@@ -614,7 +585,7 @@ SlotcarCommon::UpdateResult SlotcarCommon::update_diff_drive(
       }
     }
 
-    if (!rotate_towards_next_target && _traj_wp_idx < trajectory.size())
+    if (_traj_wp_idx < trajectory.size())
     {
       const double d_yaw_tolerance = 5.0 * M_PI / 180.0;
       auto goal_heading = compute_heading(trajectory.at(_traj_wp_idx).pose);
@@ -629,11 +600,24 @@ SlotcarCommon::UpdateResult SlotcarCommon::update_diff_drive(
       // only spin in place until we are oriented in the desired direction.
       result.v = std::abs(result.w) <
         d_yaw_tolerance ? dir * dpos_mag : 0.0;
+
+      if (hold || pause)
+      {
+        result.v = 0.0;
+        _current_mode.mode = rmf_fleet_msgs::msg::RobotMode::MODE_PAUSED;
+      }
       if (result.v != 0.0)
       {
         result.target_linear_speed_now = _nominal_drive_speed;
       }
-      result.target_linear_speed_destination = 0.0;
+    }
+    else
+    {
+      const auto goal_heading =
+          compute_heading(trajectory.back().pose);
+      result.w = compute_change_in_rotation(
+          current_heading, goal_heading);
+
     }
   }
   else
